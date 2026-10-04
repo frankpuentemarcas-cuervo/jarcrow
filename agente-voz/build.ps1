@@ -12,6 +12,7 @@ if ($LASTEXITCODE -ne 0) { throw "No se pudieron instalar dependencias" }
     --add-data "app;app" `
     --exclude-module gui --exclude-module agent --exclude-module tools --exclude-module voice --exclude-module config `
     --collect-all customtkinter `
+    --collect-all tkinter `
     --collect-all faster_whisper `
     --collect-all ctranslate2 `
     --collect-all onnxruntime `
