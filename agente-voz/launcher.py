@@ -14,11 +14,22 @@ from pathlib import Path
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
-# Asegurar rutas de Tcl/Tk en entornos virtuales donde Python no las auto-detecta en Windows
+# Asegurar rutas de Tcl/Tk tanto en entorno virtual como en .exe empaquetado
 if not getattr(sys, "frozen", False):
     base_dir = Path(getattr(sys, "base_prefix", sys.prefix))
     tcl_cand = base_dir / "tcl" / "tcl8.6"
     tk_cand = base_dir / "tcl" / "tk8.6"
+    if tcl_cand.exists():
+        os.environ.setdefault("TCL_LIBRARY", str(tcl_cand))
+    if tk_cand.exists():
+        os.environ.setdefault("TK_LIBRARY", str(tk_cand))
+else:
+    int_dir = Path(sys._MEIPASS)
+    tcl_cand = int_dir / "_internal" / "tcl" / "tcl8.6"
+    tk_cand = int_dir / "_internal" / "tcl" / "tk8.6"
+    if not tcl_cand.exists():
+        tcl_cand = int_dir / "tcl" / "tcl8.6"
+        tk_cand = int_dir / "tcl" / "tk8.6"
     if tcl_cand.exists():
         os.environ.setdefault("TCL_LIBRARY", str(tcl_cand))
     if tk_cand.exists():

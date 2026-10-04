@@ -6,23 +6,43 @@ $py = ".venv\Scripts\python.exe"
 uv pip install --python $py -r requirements.txt pyinstaller
 if ($LASTEXITCODE -ne 0) { throw "No se pudieron instalar dependencias" }
 
+$sysPy = "C:\Users\frank\AppData\Local\Programs\Python\Python313"
+$addBin = ""
+$addTkData = ""
+if (Test-Path "$sysPy\DLLs\_tkinter.pyd") {
+    $addBin = "--add-binary `"$sysPy\DLLs\_tkinter.pyd;.`" --add-binary `"$sysPy\DLLs\tcl86t.dll;.`" --add-binary `"$sysPy\DLLs\tk86t.dll;.`""
+}
+if (Test-Path "$sysPy\tcl\tcl8.6") {
+    $addTkData = "--add-data `"$sysPy\tcl\tcl8.6;_internal\tcl\tcl8.6`" --add-data `"$sysPy\tcl\tk8.6;_internal\tcl\tk8.6`""
+}
+
 # 2) Empaquetar. app/ va como DATOS (no compilado) para poder actualizarlo sin regenerar el .exe.
 #    --windowed: sin consola. onedir: arranque rápido.
-& $py -m PyInstaller launcher.py --name Jarcrow --onedir --windowed --noconfirm --clean `
-    --add-data "app;app" `
-    --exclude-module gui --exclude-module agent --exclude-module tools --exclude-module voice --exclude-module config `
-    --collect-all customtkinter `
-    --collect-all tkinter `
-    --collect-all faster_whisper `
-    --collect-all ctranslate2 `
-    --collect-all onnxruntime `
-    --collect-all tokenizers `
-    --collect-all sounddevice `
-    --collect-all _sounddevice_data `
-    --collect-all edge_tts `
-    --collect-all ddgs `
-    --collect-submodules pygame `
-    --hidden-import _deps
+$pyArgs = @(
+    "-m", "PyInstaller", "launcher.py", "--name", "Jarcrow", "--onedir", "--windowed", "--noconfirm", "--clean",
+    "--add-data", "app;app",
+    "--add-binary", "$sysPy\DLLs\_tkinter.pyd;.",
+    "--add-binary", "$sysPy\DLLs\tcl86t.dll;.",
+    "--add-binary", "$sysPy\DLLs\tk86t.dll;.",
+    "--add-data", "$sysPy\tcl\tcl8.6;_internal\tcl\tcl8.6",
+    "--add-data", "$sysPy\tcl\tk8.6;_internal\tcl\tk8.6",
+    "--exclude-module", "gui", "--exclude-module", "agent", "--exclude-module", "tools", "--exclude-module", "voice", "--exclude-module", "config",
+    "--collect-all", "customtkinter",
+    "--collect-all", "tkinter",
+    "--collect-all", "faster_whisper",
+    "--collect-all", "ctranslate2",
+    "--collect-all", "onnxruntime",
+    "--collect-all", "tokenizers",
+    "--collect-all", "sounddevice",
+    "--collect-all", "_sounddevice_data",
+    "--collect-all", "edge_tts",
+    "--collect-all", "ddgs",
+    "--collect-submodules", "pygame",
+    "--hidden-import", "tkinter",
+    "--hidden-import", "_tkinter",
+    "--hidden-import", "_deps"
+)
+& $py @pyArgs
 if ($LASTEXITCODE -ne 0) { throw "Falló PyInstaller" }
 
 # 3) Inno Setup (se instala con winget si no está)
