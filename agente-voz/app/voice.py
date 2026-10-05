@@ -27,9 +27,9 @@ def load_whisper():
     return _whisper
 
 
-def listen_utterance(stop_event, on_level=lambda v: None, silence_s=1.6, max_s=45.0, min_speech_s=0.4):
+def listen_utterance(stop_event, on_level=lambda v: None, silence_s=0.8, max_s=45.0, min_speech_s=0.35):
     """Escucha en continuo y devuelve el audio de UNA frase.
-    silence_s=1.6s permite pausas naturales al hablar sin cortar prematuramente.
+    silence_s=0.8s corta ágilmente al terminar de hablar para respuesta inmediata.
     Devuelve None si se pidió detener.
     """
     sr = config.SAMPLE_RATE

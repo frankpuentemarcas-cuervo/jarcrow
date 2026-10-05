@@ -234,6 +234,22 @@ class JarcrowApp(ctk.CTk):
             if self.agent is None:
                 self.agent = Agent(self.confirm_command)
 
+            def on_subtask_notify(msg: str):
+                self.post("log", "⚙️ Subagente", msg)
+                # Avisar por voz brevemente si el agente no está ocupado hablando
+                if self.agent_state == "listening" and not self.stop_event.is_set():
+                    try:
+                        voice.speak(msg, self.stop_event)
+                    except Exception:
+                        pass
+
+            import subagents
+
+            # Registro de callback de notificación global de subagentes
+            subagents._global_notify = on_subtask_notify
+
+            WORD_TO_NUM = {"uno": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8, "nueve": 9, "diez": 10}
+
             accumulated_text = []
 
             while not self.stop_event.is_set():
@@ -248,20 +264,39 @@ class JarcrowApp(ctk.CTk):
                 clean = raw_text.strip()
                 lower = clean.lower()
 
-                # 1. Comando inmediato de parada (solo frases explícitas de stop, NUNCA la preposición 'para')
+                # 1. Comandos específicos de subtareas: "para la tarea uno", "cancela la tarea 2", etc.
+                task_cancel_match = re.search(r"\b(para|detén|detener|cancela|cancelar)\s+(la\s+)?tarea\s+(\w+)\b", lower)
+                if task_cancel_match:
+                    t_target = task_cancel_match.group(3)
+                    t_num = int(t_target) if t_target.isdigit() else WORD_TO_NUM.get(t_target)
+                    if t_num:
+                        res = subagents.cancel_task(t_num)
+                        msg_reply = res.get("mensaje") or res.get("error", "Error al cancelar tarea.")
+                        self.post("log", "Vos", clean)
+                        self.post("log", "Jarcrow", msg_reply)
+                        self.post("state", "speaking")
+                        try:
+                            voice.speak(msg_reply, self.stop_event)
+                        except Exception:
+                            pass
+                        self.post("state", "listening")
+                        continue
+
+                # 2. Comando inmediato de parada general: "Detente", "Cancela todo", "Basta"
                 is_stop_command = bool(
-                    re.search(r"\b(detente|detén|detener|cancela|cancelar|basta|stop)\b", lower)
+                    re.search(r"\b(detente|detén todo|detenerse|cancela todo|cancelar todo|basta|stop)\b", lower)
                     or re.search(r"\b(para ahí|para ya|parar ejecución)\b", lower)
                 )
                 if is_stop_command:
                     self.execution_stop_event.set()
+                    subagents.cancel_all_tasks()
                     accumulated_text.clear()
                     self.post("log", "Vos", clean)
                     self.post("log", "Jarcrow", "Detenido.")
                     self.post("state", "listening", "Te escucho...")
                     continue
 
-                # 2. Detección de 'procede' (con tolerancia fonética: procede, procedé, proceder, adelante, ejecuta)
+                # 3. Detección de 'procede' (con tolerancia fonética: procede, procedé, proceder, adelante, ejecuta)
                 is_proceed_trigger = bool(re.search(r"\b(procede|procedé|proceder|adelante|ejecuta|ejecutar|envía|enviar)\b", lower))
 
                 # 3. Detección de palabra de activación "Jar" / "Hola Jar"

@@ -73,6 +73,64 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "delegate_task",
+            "description": (
+                "Delega una tarea a un subagente en segundo plano para no hacer esperar al usuario. "
+                "Usalo para investigaciones largas, recopilación de información, descargas o tareas múltiples. "
+                "Devuelve el ID numérico asignado (ej: 1, 2) para que puedas informar al usuario."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string", "description": "Descripción clara de la tarea que debe realizar el subagente."},
+                    "task_type": {"type": "string", "enum": ["investigacion", "sistema", "general"], "default": "general"},
+                },
+                "required": ["description"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_tasks",
+            "description": "Lista todas las tareas delegadas a subagentes con su estado actual (en_progreso, completada, fallida, cancelada).",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cancel_task",
+            "description": "Cancela un subagente en segundo plano dado su ID numérico (ej: 1, 2).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "integer", "description": "El ID numérico de la tarea a cancelar."},
+                },
+                "required": ["task_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "retry_task",
+            "description": "Reintenta una tarea delegada que falló o fue interrumpida.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_id": {"type": "integer", "description": "El ID numérico de la tarea a reintentar."},
+                },
+                "required": ["task_id"],
+            },
+        },
+    },
 ]
 
 
@@ -162,6 +220,11 @@ def dispatch(name: str, args: dict, confirm=None) -> str:
             return fetch_url(**args)
         if name == "run_command":
             return run_command(confirm=confirm, **args)
+        if name in ("delegate_task", "list_tasks", "cancel_task", "retry_task"):
+            import subagents
+            func = getattr(subagents, name)
+            res = func(**args)
+            return json.dumps(res, ensure_ascii=False)
         return f"Herramienta desconocida: {name}"
     except Exception as exc:  # el error vuelve al LLM para que se recupere
         return f"ERROR ejecutando {name}: {exc}"
