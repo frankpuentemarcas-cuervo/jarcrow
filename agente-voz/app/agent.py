@@ -38,11 +38,14 @@ class Agent:
                 return self.client.chat.completions.create(**kwargs)
             raise
 
-    def ask(self, user_text: str, max_steps: int = 6) -> str:
+    def ask(self, user_text: str, max_steps: int = 6, stop_event=None) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         self.messages.append({"role": "user", "content": f"[{now}] {user_text}"})
 
         for _ in range(max_steps):
+            if stop_event is not None and stop_event.is_set():
+                return "Ejecución detenida."
+
             msg = self._complete().choices[0].message
             calls = msg.tool_calls or []
             self.messages.append(
@@ -56,6 +59,8 @@ class Agent:
                 return msg.content or ""
 
             for call in calls:
+                if stop_event is not None and stop_event.is_set():
+                    return "Ejecución detenida."
                 try:
                     args = json.loads(call.function.arguments or "{}")
                 except json.JSONDecodeError:

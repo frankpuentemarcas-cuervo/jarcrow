@@ -14,3 +14,4 @@ import openai  # noqa: F401
 import pygame  # noqa: F401
 import sounddevice  # noqa: F401
 import tkinter  # noqa: F401
+import _tkinter  # noqa: F401

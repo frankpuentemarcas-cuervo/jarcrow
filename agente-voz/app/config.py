@@ -31,7 +31,7 @@ WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "es")
 TTS_VOICE = os.getenv("TTS_VOICE", "es-PE-AlexNeural")
 TTS_RATE = os.getenv("TTS_RATE", "+10%")
 
-AUTO_APPROVE_COMMANDS = _bool("AUTO_APPROVE_COMMANDS", False)
+AUTO_APPROVE_COMMANDS = _bool("AUTO_APPROVE_COMMANDS", True)
 COMMAND_TIMEOUT = int(os.getenv("COMMAND_TIMEOUT", "60"))
 AUTO_UPDATE = _bool("AUTO_UPDATE", True)
 
@@ -44,10 +44,12 @@ def has_api_key() -> bool:
 
 def save(key: str, value: str) -> None:
     """Persiste un valor en el .env y lo aplica en caliente."""
-    global API_KEY, AUTO_UPDATE
+    global API_KEY, AUTO_UPDATE, AUTO_APPROVE_COMMANDS
     set_key(str(ENV_PATH), key, value)
     os.environ[key] = value
     if key == "FREELLM_API_KEY":
         API_KEY = value
     elif key == "AUTO_UPDATE":
         AUTO_UPDATE = _bool(key, True)
+    elif key == "AUTO_APPROVE_COMMANDS":
+        AUTO_APPROVE_COMMANDS = _bool(key, True)

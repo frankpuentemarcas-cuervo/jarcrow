@@ -1,6 +1,7 @@
 """Interfaz de Jarcrow: un botón para activar/apagar el agente de voz."""
 import math
 import queue
+import re
 import threading
 import tkinter as tk
 from tkinter import messagebox
@@ -32,7 +33,7 @@ class JarcrowApp(ctk.CTk):
         super().__init__()
         ctk.set_appearance_mode("dark")
         self.title("Jarcrow")
-        self.geometry("400x620")
+        self.geometry("430x670")
         self.resizable(False, False)
         self.configure(fg_color=BG)
 
@@ -40,6 +41,7 @@ class JarcrowApp(ctk.CTk):
         self.can_update = can_update
         self.events: queue.Queue = queue.Queue()
         self.stop_event = threading.Event()
+        self.execution_stop_event = threading.Event()
         self.worker: threading.Thread | None = None
         self.agent: Agent | None = None
         self.agent_state = "off"
@@ -56,11 +58,16 @@ class JarcrowApp(ctk.CTk):
 
     # ---------- UI ----------
     def _build(self):
-        ctk.CTkLabel(self, text="Jarcrow", font=ctk.CTkFont(size=30, weight="bold"), text_color=TEXT).pack(pady=(28, 0))
-        ctk.CTkLabel(self, text="Tu asistente de voz", font=ctk.CTkFont(size=14), text_color=MUTED).pack()
+        ctk.CTkLabel(self, text="Jarcrow", font=ctk.CTkFont(size=30, weight="bold"), text_color=TEXT).pack(pady=(22, 0))
+        ctk.CTkLabel(
+            self,
+            text="Iniciá con 'Jar', finalizá con 'Procede' y pausá con 'Detente'",
+            font=ctk.CTkFont(size=12),
+            text_color=MUTED,
+        ).pack(pady=(4, 0))
 
         self.canvas = tk.Canvas(self, width=240, height=240, bg=BG, highlightthickness=0)
-        self.canvas.pack(pady=(18, 4))
+        self.canvas.pack(pady=(10, 4))
 
         self.status = ctk.CTkLabel(self, text="Apagado", font=ctk.CTkFont(size=16), text_color=MUTED)
         self.status.pack()
@@ -68,38 +75,58 @@ class JarcrowApp(ctk.CTk):
         self.button = ctk.CTkButton(
             self,
             text="▶  Activar",
-            width=230,
-            height=58,
-            corner_radius=29,
+            width=240,
+            height=54,
+            corner_radius=27,
             font=ctk.CTkFont(size=19, weight="bold"),
             fg_color="#22C55E",
             hover_color="#16A34A",
             command=self.toggle,
         )
-        self.button.pack(pady=(18, 16))
+        self.button.pack(pady=(12, 12))
 
         self.transcript = ctk.CTkTextbox(
-            self, width=350, height=110, fg_color=CARD, text_color=TEXT, corner_radius=14, wrap="word",
+            self, width=390, height=135, fg_color=CARD, text_color=TEXT, corner_radius=14, wrap="word",
             font=ctk.CTkFont(size=13),
         )
-        self.transcript.pack()
+        self.transcript.pack(padx=20, pady=(0, 10))
         self.transcript.configure(state="disabled")
 
-        footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.pack(side="bottom", fill="x", padx=20, pady=14)
+        # Footer con diseño horizontal limpio y espaciado
+        footer = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14, height=48)
+        footer.pack(side="bottom", fill="x", padx=18, pady=(0, 16))
+        footer.pack_propagate(False)
+
         version = updater.local_version(self.app_dir)
-        ctk.CTkLabel(footer, text=f"v{version}", text_color=MUTED, font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(footer, text=f"v{version}", text_color=MUTED, font=ctk.CTkFont(size=12, weight="bold")).pack(
+            side="left", padx=(14, 10), pady=10
+        )
+
+        self.auto_var = ctk.BooleanVar(value=config.AUTO_UPDATE)
+        self.switch_auto = ctk.CTkSwitch(
+            footer,
+            text="Auto",
+            variable=self.auto_var,
+            width=46,
+            font=ctk.CTkFont(size=12),
+            text_color=TEXT,
+            command=lambda: config.save("AUTO_UPDATE", "true" if self.auto_var.get() else "false"),
+        )
+        self.switch_auto.pack(side="left", padx=4, pady=10)
+
         self.update_btn = ctk.CTkButton(
-            footer, text="Buscar actualizaciones", width=160, height=28, corner_radius=14,
-            fg_color=CARD, hover_color="#232838", text_color=TEXT, font=ctk.CTkFont(size=12),
+            footer,
+            text="Buscar actualizaciones",
+            width=150,
+            height=30,
+            corner_radius=15,
+            fg_color="#2A2F3D",
+            hover_color="#3B4254",
+            text_color=TEXT,
+            font=ctk.CTkFont(size=12, weight="bold"),
             command=self.check_updates,
         )
-        self.update_btn.pack(side="right")
-        self.auto_var = ctk.BooleanVar(value=config.AUTO_UPDATE)
-        ctk.CTkSwitch(
-            footer, text="Auto", variable=self.auto_var, width=40, font=ctk.CTkFont(size=12), text_color=MUTED,
-            command=lambda: config.save("AUTO_UPDATE", "true" if self.auto_var.get() else "false"),
-        ).pack(side="right", padx=8)
+        self.update_btn.pack(side="right", padx=(6, 12), pady=9)
 
     def _animate(self):
         self.phase += 0.08
@@ -170,11 +197,13 @@ class JarcrowApp(ctk.CTk):
     def toggle(self):
         if self.worker and self.worker.is_alive():
             self.stop_event.set()
+            self.execution_stop_event.set()
             self.button.configure(state="disabled", text="Apagando...")
             return
         if not config.has_api_key() and not self._ask_api_key():
             return
         self.stop_event.clear()
+        self.execution_stop_event.clear()
         self.button.configure(text="■  Apagar", fg_color="#EF4444", hover_color="#DC2626")
         self.worker = threading.Thread(target=self._run_agent, daemon=True)
         self.worker.start()
@@ -205,24 +234,72 @@ class JarcrowApp(ctk.CTk):
             if self.agent is None:
                 self.agent = Agent(self.confirm_command)
 
+            accumulated_text = []
+
             while not self.stop_event.is_set():
-                self.post("state", "listening")
+                self.post("state", "listening", "Te escucho..." if not accumulated_text else "Tomando nota (decí 'Procede')...")
                 audio = voice.listen_utterance(self.stop_event, self._set_level)
                 if audio is None:
                     break
-                self.post("state", "thinking", "Entendiendo...")
-                text = voice.transcribe(audio)
-                if not text:
+                raw_text = voice.transcribe(audio)
+                if not raw_text:
                     continue
-                self.post("log", "Vos", text)
+
+                clean = raw_text.strip()
+                lower = clean.lower()
+
+                # 1. Comando inmediato de parada: "Detente", "Para", "Cancela"
+                if re.search(r"\b(detente|detenerse|deten|para|cancela|cancelar)\b", lower):
+                    self.execution_stop_event.set()
+                    accumulated_text.clear()
+                    self.post("log", "Vos", clean)
+                    self.post("log", "Jarcrow", "Detenido.")
+                    self.post("state", "listening", "Te escucho...")
+                    continue
+
+                # 2. Detección de palabra de activación "Jar" / "Hola Jar"
+                has_jar = bool(re.search(r"\bjar\b", lower))
+                has_proceed = bool(re.search(r"\b(procede|adelante|ejecuta|ejecutar|proceder)\b", lower))
+
+                # Limpieza de "Jar" del texto
+                cleaned_phrase = re.sub(r"^(hola\s+)?jar[\s,.:;!?-]*", "", clean, flags=re.IGNORECASE).strip()
+
+                if has_jar or accumulated_text:
+                    # Estamos en modo Jar / acumulación
+                    self.post("log", "Vos", clean)
+                    if cleaned_phrase:
+                        accumulated_text.append(cleaned_phrase)
+
+                    # Si dijo "procede" o la frase ya contiene el cierre
+                    if has_proceed:
+                        full_prompt = " ".join(accumulated_text).strip()
+                        full_prompt = re.sub(r"\b(procede|adelante|ejecuta|ejecutar|proceder)\b[\s.!?]*$", "", full_prompt, flags=re.IGNORECASE).strip()
+                        accumulated_text.clear()
+                    else:
+                        # Espera a que el usuario termine de hablar o dé la orden "procede"
+                        self.post("state", "listening", "Tomando nota... (decí 'Procede' al terminar)")
+                        continue
+                else:
+                    # Modo directo: si no dijo "Jar", pero dijo una consulta normal
+                    self.post("log", "Vos", clean)
+                    full_prompt = clean
+                    if has_proceed:
+                        full_prompt = re.sub(r"\b(procede|adelante|ejecuta|ejecutar|proceder)\b[\s.!?]*$", "", full_prompt, flags=re.IGNORECASE).strip()
+
+                if not full_prompt:
+                    continue
+
+                self.execution_stop_event.clear()
                 self.post("state", "thinking")
                 try:
-                    answer = self.agent.ask(text)
+                    answer = self.agent.ask(full_prompt, stop_event=self.execution_stop_event)
                 except Exception as exc:
                     self.post("error", f"No pude conectar con FreeLLMAPI: {exc}")
                     continue
-                if self.stop_event.is_set():
-                    break
+
+                if self.stop_event.is_set() or self.execution_stop_event.is_set():
+                    continue
+
                 self.post("log", "Jarcrow", answer)
                 self.post("state", "speaking")
                 try:
