@@ -248,8 +248,12 @@ class JarcrowApp(ctk.CTk):
                 clean = raw_text.strip()
                 lower = clean.lower()
 
-                # 1. Comando inmediato de parada: "Detente", "Para", "Cancela"
-                if re.search(r"\b(detente|detenerse|deten|para|cancela|cancelar)\b", lower):
+                # 1. Comando inmediato de parada (solo frases explícitas de stop, NUNCA la preposición 'para')
+                is_stop_command = bool(
+                    re.search(r"\b(detente|detén|detener|cancela|cancelar|basta|stop)\b", lower)
+                    or re.search(r"\b(para ahí|para ya|parar ejecución)\b", lower)
+                )
+                if is_stop_command:
                     self.execution_stop_event.set()
                     accumulated_text.clear()
                     self.post("log", "Vos", clean)
@@ -257,34 +261,33 @@ class JarcrowApp(ctk.CTk):
                     self.post("state", "listening", "Te escucho...")
                     continue
 
-                # 2. Detección de palabra de activación "Jar" / "Hola Jar"
+                # 2. Detección de 'procede' (con tolerancia fonética: procede, procedé, proceder, adelante, ejecuta)
+                is_proceed_trigger = bool(re.search(r"\b(procede|procedé|proceder|adelante|ejecuta|ejecutar|envía|enviar)\b", lower))
+
+                # 3. Detección de palabra de activación "Jar" / "Hola Jar"
                 has_jar = bool(re.search(r"\bjar\b", lower))
-                has_proceed = bool(re.search(r"\b(procede|adelante|ejecuta|ejecutar|proceder)\b", lower))
 
-                # Limpieza de "Jar" del texto
-                cleaned_phrase = re.sub(r"^(hola\s+)?jar[\s,.:;!?-]*", "", clean, flags=re.IGNORECASE).strip()
+                # Si el usuario dijo SOLO la palabra 'procede' para enviar lo acumulado
+                clean_without_proceed = re.sub(r"\b(procede|procedé|proceder|adelante|ejecuta|ejecutar|envía|enviar)\b[\s.!?]*", "", clean, flags=re.IGNORECASE).strip()
+                cleaned_phrase = re.sub(r"^(hola\s+)?jar[\s,.:;!?-]*", "", clean_without_proceed, flags=re.IGNORECASE).strip()
 
-                if has_jar or accumulated_text:
-                    # Estamos en modo Jar / acumulación
+                if is_proceed_trigger:
                     self.post("log", "Vos", clean)
                     if cleaned_phrase:
                         accumulated_text.append(cleaned_phrase)
-
-                    # Si dijo "procede" o la frase ya contiene el cierre
-                    if has_proceed:
-                        full_prompt = " ".join(accumulated_text).strip()
-                        full_prompt = re.sub(r"\b(procede|adelante|ejecuta|ejecutar|proceder)\b[\s.!?]*$", "", full_prompt, flags=re.IGNORECASE).strip()
-                        accumulated_text.clear()
-                    else:
-                        # Espera a que el usuario termine de hablar o dé la orden "procede"
-                        self.post("state", "listening", "Tomando nota... (decí 'Procede' al terminar)")
-                        continue
+                    full_prompt = " ".join(accumulated_text).strip()
+                    accumulated_text.clear()
+                elif has_jar or accumulated_text:
+                    # Guardamos la frase parcial y seguimos escuchando hasta que diga 'procede'
+                    self.post("log", "Vos", clean)
+                    if cleaned_phrase:
+                        accumulated_text.append(cleaned_phrase)
+                    self.post("state", "listening", "Tomando nota... (decí 'Procede' para enviar)")
+                    continue
                 else:
-                    # Modo directo: si no dijo "Jar", pero dijo una consulta normal
+                    # Consulta directa sin wake word
                     self.post("log", "Vos", clean)
                     full_prompt = clean
-                    if has_proceed:
-                        full_prompt = re.sub(r"\b(procede|adelante|ejecuta|ejecutar|proceder)\b[\s.!?]*$", "", full_prompt, flags=re.IGNORECASE).strip()
 
                 if not full_prompt:
                     continue
