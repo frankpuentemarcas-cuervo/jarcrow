@@ -24,13 +24,21 @@ def load_whisper():
     if _whisper is None:
         from faster_whisper import WhisperModel
 
-        _whisper = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
+        # Asignar hilos óptimos para CPU (ej. 4 a 6 hilos según núcleos disponibles)
+        cpu_threads = min(6, max(2, (os.cpu_count() or 4) // 2))
+        _whisper = WhisperModel(
+            config.WHISPER_MODEL,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=cpu_threads,
+            num_workers=1
+        )
     return _whisper
 
 
-def listen_utterance(stop_event, on_level=lambda v: None, silence_s=0.8, max_s=45.0, min_speech_s=0.35):
+def listen_utterance(stop_event, on_level=lambda v: None, silence_s=1.5, max_s=45.0, min_speech_s=0.35):
     """Escucha en continuo y devuelve el audio de UNA frase.
-    silence_s=0.8s corta ágilmente al terminar de hablar para respuesta inmediata.
+    silence_s=1.5s espera pausas naturales sin cortar prematuramente al usuario.
     Devuelve None si se pidió detener.
     """
     sr = config.SAMPLE_RATE
@@ -81,11 +89,18 @@ def listen_utterance(stop_event, on_level=lambda v: None, silence_s=0.8, max_s=4
 def transcribe(audio: np.ndarray) -> str:
     if audio is None or audio.size < config.SAMPLE_RATE * 0.3:
         return ""
-    segments, _ = load_whisper().transcribe(audio, language=config.WHISPER_LANGUAGE, vad_filter=True)
+    # beam_size=1 provee inferencia greedy ultrarrápida manteniendo alta precisión
+    segments, _ = load_whisper().transcribe(
+        audio,
+        language=config.WHISPER_LANGUAGE,
+        vad_filter=True,
+        beam_size=1
+    )
     text = " ".join(s.text.strip() for s in segments).strip()
     if len(text) < 80 and any(h in text.lower() for h in _HALLUCINATIONS):
         return ""
     return text
+
 
 
 def _clean_for_speech(text: str) -> str:
