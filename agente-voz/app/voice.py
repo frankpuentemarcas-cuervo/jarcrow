@@ -197,7 +197,6 @@ def speak(text: str, stop_event=None, on_interrupted=None, enable_barge_in: bool
 
     monitor_thread = None
     if enable_barge_in:
-        import threading
         monitor_thread = threading.Thread(target=_barge_in_monitor, daemon=True)
         monitor_thread.start()
 
