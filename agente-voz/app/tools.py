@@ -131,6 +131,51 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember_fact",
+            "description": (
+                "Guarda un hecho, preferencia o dato clave sobre Frank o sus proyectos en memoria permanente. "
+                "Usalo cuando Frank te diga algo que deba ser recordado a futuro (ej: 'recordá que...', 'mi proyecto es...')."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Concepto o tema clave (ej: 'lenguaje_favorito', 'ruta_proyecto')."},
+                    "value": {"type": "string", "description": "Detalle concreto a recordar."},
+                },
+                "required": ["key", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recall_facts",
+            "description": "Busca hechos o recuerdos relevantes en la memoria permanente de Frank usando palabras clave.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Palabra o tema para buscar en la memoria. Dejá vacío para ver los recuerdos recientes."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_fact",
+            "description": "Olvida o elimina un dato específico guardado en la memoria permanente.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "La clave o tema del recuerdo a olvidar."},
+                },
+                "required": ["key"],
+            },
+        },
+    },
 ]
 
 
@@ -225,6 +270,11 @@ def dispatch(name: str, args: dict, confirm=None) -> str:
             func = getattr(subagents, name)
             res = func(**args)
             return json.dumps(res, ensure_ascii=False)
+        if name in ("remember_fact", "recall_facts", "forget_fact"):
+            import memory
+            func = getattr(memory, name)
+            res = func(**args)
+            return json.dumps(res, ensure_ascii=False) if not isinstance(res, str) else res
         return f"Herramienta desconocida: {name}"
     except Exception as exc:  # el error vuelve al LLM para que se recupere
         return f"ERROR ejecutando {name}: {exc}"
