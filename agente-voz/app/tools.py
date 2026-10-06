@@ -176,6 +176,36 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "invoke_coding_agent",
+            "description": (
+                "Invoca a un agente de ingeniería de software especializado (Claude Code, Codex o Antigravity) "
+                "para realizar tareas de programación, refactorización, auditoría o comandos complejos. "
+                "Podés ejecutarlo de forma directa o delegarlo en segundo plano."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent": {
+                        "type": "string",
+                        "enum": ["claude", "codex", "agy"],
+                        "description": "El agente a invocar: 'claude' (Claude Code), 'codex' (Codex CLI) o 'agy' (Antigravity CLI).",
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Instrucción o tarea detallada que debe resolver el agente de código.",
+                    },
+                    "directory": {
+                        "type": "string",
+                        "description": "Directorio de trabajo del proyecto (opcional, por defecto el directorio actual).",
+                    },
+                },
+                "required": ["agent", "prompt"],
+            },
+        },
+    },
 ]
 
 
@@ -257,6 +287,44 @@ def run_command(command: str, reason: str = "", confirm=None) -> str:
     return json.dumps({"exit_code": proc.returncode, "stdout": out, "stderr": err}, ensure_ascii=False)
 
 
+def invoke_coding_agent(agent: str, prompt: str, directory: str = "") -> str:
+    """Ejecuta una tarea de código en Claude Code, Codex CLI o Antigravity de forma no interactiva."""
+    cwd = directory if directory and os.path.exists(directory) else None
+    agent = agent.lower().strip()
+    
+    if agent == "claude":
+        cmd = ["claude", "-p", prompt]
+    elif agent == "codex":
+        cmd = ["codex", "exec", prompt]
+    elif agent in ("agy", "antigravity"):
+        cmd = ["agy", "--prompt", prompt]
+    else:
+        return f"Agente no soportado: '{agent}'. Opciones válidas: claude, codex, agy."
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        out = (proc.stdout or "").strip()[-3000:]
+        err = (proc.stderr or "").strip()[-1500:]
+        if proc.returncode == 0:
+            return out or f"{agent.capitalize()} ejecutó la tarea con éxito."
+        return f"{agent.capitalize()} terminó con código {proc.returncode}. Salida/Error: {err or out}"
+    except FileNotFoundError:
+        return f"No se encontró el ejecutable de {agent} en el PATH del sistema."
+    except subprocess.TimeoutExpired:
+        return f"La tarea en {agent} superó el tiempo límite de 3 minutos."
+    except Exception as e:
+        return f"Error ejecutando {agent}: {e}"
+
+
 def dispatch(name: str, args: dict, confirm=None) -> str:
     try:
         if name == "web_search":
@@ -265,6 +333,8 @@ def dispatch(name: str, args: dict, confirm=None) -> str:
             return fetch_url(**args)
         if name == "run_command":
             return run_command(confirm=confirm, **args)
+        if name == "invoke_coding_agent":
+            return invoke_coding_agent(**args)
         if name in ("delegate_task", "list_tasks", "cancel_task", "retry_task"):
             import subagents
             func = getattr(subagents, name)
