@@ -72,18 +72,35 @@ class JarcrowApp(ctk.CTk):
         self.status = ctk.CTkLabel(self, text="Apagado", font=ctk.CTkFont(size=16), text_color=MUTED)
         self.status.pack()
 
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=(10, 10))
+
         self.button = ctk.CTkButton(
-            self,
+            btn_frame,
             text="▶  Activar",
-            width=240,
-            height=54,
-            corner_radius=27,
-            font=ctk.CTkFont(size=19, weight="bold"),
+            width=180,
+            height=50,
+            corner_radius=25,
+            font=ctk.CTkFont(size=18, weight="bold"),
             fg_color="#22C55E",
             hover_color="#16A34A",
             command=self.toggle,
         )
-        self.button.pack(pady=(12, 12))
+        self.button.pack(side="left", padx=6)
+
+        self.stop_btn = ctk.CTkButton(
+            btn_frame,
+            text="⏹ Detener",
+            width=110,
+            height=50,
+            corner_radius=25,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#374151",
+            hover_color="#4B5563",
+            command=self.manual_stop,
+        )
+        self.stop_btn.pack(side="left", padx=6)
+
 
         self.transcript = ctk.CTkTextbox(
             self, width=390, height=135, fg_color=CARD, text_color=TEXT, corner_radius=14, wrap="word",
@@ -193,9 +210,23 @@ class JarcrowApp(ctk.CTk):
         done.wait()
         return holder[0]
 
-    # ---------- Activar / apagar ----------
+    # ---------- Activar / apagar / detener ----------
+    def manual_stop(self):
+        """Detiene inmediatamente la reproducción de audio, cancela subtareas y la ejecución actual."""
+        voice.stop_playback()
+        self.execution_stop_event.set()
+        try:
+            import subagents
+            subagents.cancel_all_tasks()
+        except Exception:
+            pass
+        self.post("log", "Jarcrow", "Detenido.")
+        self.post("state", "listening", "Detenido. Te escucho...")
+
+
     def toggle(self):
         if self.worker and self.worker.is_alive():
+            voice.stop_playback()
             self.stop_event.set()
             self.execution_stop_event.set()
             self.button.configure(state="disabled", text="Apagando...")
@@ -209,9 +240,11 @@ class JarcrowApp(ctk.CTk):
         self.worker.start()
 
     def _on_stopped(self):
+        voice.stop_playback()
         self._set_state("off")
         self.level = 0.0
         self.button.configure(state="normal", text="▶  Activar", fg_color="#22C55E", hover_color="#16A34A")
+
 
     def _ask_api_key(self) -> bool:
         dialog = ctk.CTkInputDialog(
@@ -282,18 +315,15 @@ class JarcrowApp(ctk.CTk):
                         self.post("state", "listening")
                         continue
 
-                # 2. Comando inmediato de parada general: "Detente", "Cancela todo", "Basta"
+                # 2. Comando inmediato de parada general: "Detente", "Cancela todo", "Basta", "Alto", "Silencio"
                 is_stop_command = bool(
-                    re.search(r"\b(detente|detén todo|detenerse|cancela todo|cancelar todo|basta|stop)\b", lower)
-                    or re.search(r"\b(para ahí|para ya|parar ejecución)\b", lower)
+                    voice.STOP_WORDS_REGEX.search(lower)
+                    or re.search(r"\b(detén todo|deten todo|cancela todo|cancelar todo|parar todo|para ahí|para ya|parar ejecución)\b", lower)
                 )
                 if is_stop_command:
-                    self.execution_stop_event.set()
-                    subagents.cancel_all_tasks()
                     accumulated_text.clear()
                     self.post("log", "Vos", clean)
-                    self.post("log", "Jarcrow", "Detenido.")
-                    self.post("state", "listening", "Te escucho...")
+                    self.manual_stop()
                     continue
 
                 # 3. Detección de 'procede' (con tolerancia fonética: procede, procedé, proceder, adelante, ejecuta)
@@ -340,14 +370,26 @@ class JarcrowApp(ctk.CTk):
 
                 self.post("log", "Jarcrow", answer)
                 self.post("state", "speaking")
+
+                def _on_barge_in():
+                    self.execution_stop_event.set()
+                    self.post("log", "Jarcrow", "Detenido (interrumpido).")
+                    self.post("state", "listening", "Te escucho...")
+
                 try:
-                    voice.speak(answer, self.stop_event)
+                    voice.speak(
+                        answer,
+                        stop_event=[self.stop_event, self.execution_stop_event],
+                        on_interrupted=_on_barge_in,
+                        enable_barge_in=True,
+                    )
                 except Exception as exc:
                     self.post("error", f"No pude hablar: {exc}")
         except Exception as exc:
             self.post("error", str(exc))
         finally:
             self.post("stopped")
+
 
     # ---------- Actualizaciones ----------
     def check_updates(self, silent: bool = False):
