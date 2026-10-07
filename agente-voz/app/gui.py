@@ -272,7 +272,7 @@ class JarcrowApp(ctk.CTk):
                 # Avisar por voz brevemente si el agente no está ocupado hablando
                 if self.agent_state == "listening" and not self.stop_event.is_set():
                     try:
-                        voice.speak(msg, self.stop_event)
+                        voice.speak(msg, stop_event=[self.stop_event, self.execution_stop_event], enable_barge_in=False)
                     except Exception:
                         pass
 
@@ -309,11 +309,12 @@ class JarcrowApp(ctk.CTk):
                         self.post("log", "Jarcrow", msg_reply)
                         self.post("state", "speaking")
                         try:
-                            voice.speak(msg_reply, self.stop_event)
+                            voice.speak(msg_reply, stop_event=[self.stop_event, self.execution_stop_event], enable_barge_in=False)
                         except Exception:
                             pass
                         self.post("state", "listening")
                         continue
+
 
                 # 2. Comando inmediato de parada general: "Detente", "Cancela todo", "Basta", "Alto", "Silencio"
                 is_stop_command = bool(

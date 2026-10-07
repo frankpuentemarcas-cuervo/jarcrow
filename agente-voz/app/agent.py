@@ -107,11 +107,21 @@ class Agent:
                 self.messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
 
         if not final_response:
-            final_response = "Me trabé usando herramientas, ¿podés reformular la pregunta?"
+            # Si el modelo ejecutó herramientas pero no emitió texto final, pedirle síntesis explícita
+            try:
+                self.messages.append({"role": "user", "content": "Con base en lo anterior, dame una respuesta clara y directa en una o dos oraciones."})
+                res_msg = self._complete().choices[0].message
+                final_response = res_msg.content or ""
+            except Exception:
+                final_response = ""
+
+        if not final_response:
+            final_response = "Completé la consulta con las herramientas. ¿Querés que revise algo más?"
 
         # Persistir turno de respuesta del asistente en el buffer rotativo
         memory.add_turn("assistant", final_response)
         return final_response
+
 
     def reset(self):
         memory.clear_recent_turns()
