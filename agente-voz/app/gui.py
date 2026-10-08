@@ -331,11 +331,7 @@ class JarcrowApp(ctk.CTk):
 
 
                 # 2. Comando inmediato de parada general: "Detente", "Cancela todo", "Basta", "Alto", "Silencio"
-                is_stop_command = bool(
-                    voice.STOP_WORDS_REGEX.search(lower)
-                    or re.search(r"\b(detén todo|deten todo|cancela todo|cancelar todo|parar todo|para ahí|para ya|parar ejecución)\b", lower)
-                )
-                if is_stop_command:
+                if voice.is_stop_intent(clean):
                     accumulated_text.clear()
                     self.post("log", "Vos", clean)
                     self.manual_stop()

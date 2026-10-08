@@ -125,8 +125,48 @@ def stop_playback() -> None:
         pass
 
 
+def is_stop_intent(text: str) -> bool:
+    """Determina si un texto representa una orden explícita de detención.
+    Distingue rigurosamente la orden imperativa ('¡pará!', 'detente') de la
+    preposición 'para' usada en oraciones normales ('para mis archivos', 'para mañana').
+    """
+    if not text:
+        return False
+    clean = text.strip().lower()
+    clean = re.sub(r"^[¡!¿?,\s]+|[¡!¿?,\s]+$", "", clean)
+    clean = re.sub(r"^(hola\s+)?(jar|jarcrow)[\s,.:;!?-]*", "", clean).strip()
+
+    # 1. Órdenes unívocas de detención directa
+    explicit_pattern = (
+        r"^(detente|deténte|deten|detén|detener|detenerse|cancela todo|cancelar todo|"
+        r"detén todo|deten todo|parar todo|para todo|basta|basta ya|alto|silencio|"
+        r"cállate|callate|stop)([\s.!?]+(por favor|ya|ahí|ahi))?$"
+    )
+    if re.match(explicit_pattern, clean, re.I):
+        return True
+
+    # 2. Expresiones específicas donde 'para'/'pará' es un verbo imperativo de frenar
+    verbal_stops = {
+        "para", "pará", "parate", "parate ya", "para ya", "pará ya", "para ahí", "pará ahí",
+        "para un poco", "pará un poco", "para de hablar", "pará de hablar",
+        "deja de hablar", "dejá de hablar", "corta", "cortá"
+    }
+    if clean in verbal_stops:
+        return True
+
+    # 3. Frases muy cortas (hasta 3 palabras) con una orden imperativa explícita
+    words = clean.split()
+    if len(words) <= 3:
+        if any(w in {"detente", "deténte", "deten", "detén", "basta", "silencio", "stop"} for w in words):
+            return True
+        if words[0] in {"para", "pará"} and (len(words) == 1 or words[1] in {"ya", "ahí", "ahi", "che", "favor"}):
+            return True
+
+    return False
+
+
 STOP_WORDS_REGEX = re.compile(
-    r"\b(detente|deténte|deten|detén|detener|detenerse|para|pará|parate|alto|silencio|cállate|callate|basta|stop|cancela|cancelar)\b",
+    r"\b(detente|deténte|deten|detén|detener|detenerse|pará|parate|alto|silencio|cállate|callate|basta|stop|cancela todo|detén todo)\b",
     re.I
 )
 
@@ -207,7 +247,7 @@ def speak(text: str, stop_event=None, on_interrupted=None, enable_barge_in: bool
                             started = False
                             silent_s = 0.0
                             detected = transcribe(audio_arr).strip()
-                            if detected and STOP_WORDS_REGEX.search(detected):
+                            if detected and is_stop_intent(detected):
                                 barge_stop.set()
                                 stop_playback()
                                 break
