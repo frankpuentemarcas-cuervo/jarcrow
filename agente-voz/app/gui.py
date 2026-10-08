@@ -61,7 +61,7 @@ class JarcrowApp(ctk.CTk):
         ctk.CTkLabel(self, text="Jarcrow", font=ctk.CTkFont(size=30, weight="bold"), text_color=TEXT).pack(pady=(22, 0))
         ctk.CTkLabel(
             self,
-            text="Iniciá con 'Jar', finalizá con 'Procede' y pausá con 'Detente'",
+            text="Inicia con 'Jar', finaliza con 'Procede' y pausa con 'Detente'",
             font=ctk.CTkFont(size=12),
             text_color=MUTED,
         ).pack(pady=(4, 0))
@@ -249,7 +249,7 @@ class JarcrowApp(ctk.CTk):
     def _ask_api_key(self) -> bool:
         dialog = ctk.CTkInputDialog(
             title="Configurar Jarcrow",
-            text="Pegá la 'Unified API Key' del dashboard de FreeLLMAPI:",
+            text="Pega la 'Unified API Key' del dashboard de FreeLLMAPI:",
         )
         key = (dialog.get_input() or "").strip()
         if not key:
@@ -300,7 +300,7 @@ class JarcrowApp(ctk.CTk):
                     if self.stop_event.is_set():
                         break
 
-                self.post("state", "listening", "Te escucho..." if not accumulated_text else "Tomando nota (decí 'Procede')...")
+                self.post("state", "listening", "Te escucho..." if not accumulated_text else "Tomando nota (di 'Procede')...")
                 audio = voice.listen_utterance(self.stop_event, self._set_level, interrupt_event=notify_event)
                 if audio is None:
                     continue
@@ -319,7 +319,7 @@ class JarcrowApp(ctk.CTk):
                     if t_num:
                         res = subagents.cancel_task(t_num)
                         msg_reply = res.get("mensaje") or res.get("error", "Error al cancelar tarea.")
-                        self.post("log", "Vos", clean)
+                        self.post("log", "Tú", clean)
                         self.post("log", "Jarcrow", msg_reply)
                         self.post("state", "speaking")
                         try:
@@ -333,7 +333,7 @@ class JarcrowApp(ctk.CTk):
                 # 2. Comando inmediato de parada general: "Detente", "Cancela todo", "Basta", "Alto", "Silencio"
                 if voice.is_stop_intent(clean):
                     accumulated_text.clear()
-                    self.post("log", "Vos", clean)
+                    self.post("log", "Tú", clean)
                     self.manual_stop()
                     continue
 
@@ -348,21 +348,21 @@ class JarcrowApp(ctk.CTk):
                 cleaned_phrase = re.sub(r"^(hola\s+)?jar[\s,.:;!?-]*", "", clean_without_proceed, flags=re.IGNORECASE).strip()
 
                 if is_proceed_trigger:
-                    self.post("log", "Vos", clean)
+                    self.post("log", "Tú", clean)
                     if cleaned_phrase:
                         accumulated_text.append(cleaned_phrase)
                     full_prompt = " ".join(accumulated_text).strip()
                     accumulated_text.clear()
                 elif has_jar or accumulated_text:
                     # Guardamos la frase parcial y seguimos escuchando hasta que diga 'procede'
-                    self.post("log", "Vos", clean)
+                    self.post("log", "Tú", clean)
                     if cleaned_phrase:
                         accumulated_text.append(cleaned_phrase)
-                    self.post("state", "listening", "Tomando nota... (decí 'Procede' para enviar)")
+                    self.post("state", "listening", "Tomando nota... (di 'Procede' para enviar)")
                     continue
                 else:
                     # Consulta directa sin wake word
-                    self.post("log", "Vos", clean)
+                    self.post("log", "Tú", clean)
                     full_prompt = clean
 
                 if not full_prompt:
@@ -406,7 +406,7 @@ class JarcrowApp(ctk.CTk):
     def check_updates(self, silent: bool = False):
         if not self.can_update:
             if not silent:
-                messagebox.showinfo("Actualizaciones", "Modo desarrollo: actualizá con 'git pull'.", parent=self)
+                messagebox.showinfo("Actualizaciones", "Modo desarrollo: actualiza con 'git pull'.", parent=self)
             return
         self.update_btn.configure(state="disabled", text="Buscando...")
 
@@ -426,7 +426,7 @@ class JarcrowApp(ctk.CTk):
             return
         if not new_version:
             if not silent:
-                messagebox.showinfo("Actualizaciones", "Ya tenés la última versión. ✅", parent=self)
+                messagebox.showinfo("Actualizaciones", "Ya tienes la última versión. ✅", parent=self)
             return
         busy = self.worker and self.worker.is_alive()
         auto = silent and config.AUTO_UPDATE and not busy

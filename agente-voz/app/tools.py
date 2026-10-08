@@ -60,13 +60,14 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "run_command",
             "description": (
-                "Ejecuta un comando de PowerShell INSTANTÁNEO de 1 segundo (abrir programas con Start-Process, consultar la hora o batería). "
-                "PROHIBIDO usar para buscar archivos, mover o copiar archivos, gestionar carpetas o procesos de varios pasos: para eso DEBES usar delegate_task."
+                "Ejecuta un comando de PowerShell rápido (hasta 2 segundos) para consultas o acciones seguras "
+                "(ej: listar archivos con Get-ChildItem, consultar si un archivo existe, abrir programas con Start-Process). "
+                "NO usar para operaciones masivas de mover/copiar/organizar archivos en lote: para eso DEBES usar delegate_task."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "Comando PowerShell instantáneo"},
+                    "command": {"type": "string", "description": "Comando PowerShell rápido a ejecutar"},
                     "reason": {"type": "string", "description": "Por qué lo vas a ejecutar"},
                 },
                 "required": ["command"],
@@ -78,8 +79,9 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "delegate_task",
             "description": (
-                "Delega una tarea a un subagente en segundo plano para no hacer esperar al usuario ni bloquear la voz. "
-                "ÚSALO OBLIGATORIAMENTE para: buscar/filtrar archivos, mover o copiar archivos, limpiar carpetas, investigaciones web amplias, descargas o tareas de múltiples pasos. "
+                "Delega una tarea operativa pesada a un subagente en segundo plano para no hacer esperar al usuario ni bloquear la voz "
+                "(ej: mover o copiar archivos en lote, organizar directorios, investigaciones amplias, descargas). "
+                "NO USAR para responder preguntas simples, listar resultados ya obtenidos ni propuestas conceptuales sin ejecución. "
                 "Devuelve el ID numérico asignado (ej: 1, 2) para que puedas informar de inmediato al usuario."
             ),
             "parameters": {
