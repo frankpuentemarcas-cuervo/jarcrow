@@ -60,13 +60,13 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "run_command",
             "description": (
-                "Ejecuta un comando de PowerShell en la PC Windows del usuario y devuelve stdout/stderr. "
-                "Usalo para abrir programas, consultar el sistema, listar archivos, etc."
+                "Ejecuta un comando de PowerShell INSTANTÁNEO de 1 segundo (abrir programas con Start-Process, consultar la hora o batería). "
+                "PROHIBIDO usar para buscar archivos, mover o copiar archivos, gestionar carpetas o procesos de varios pasos: para eso DEBES usar delegate_task."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {"type": "string", "description": "Comando PowerShell"},
+                    "command": {"type": "string", "description": "Comando PowerShell instantáneo"},
                     "reason": {"type": "string", "description": "Por qué lo vas a ejecutar"},
                 },
                 "required": ["command"],
@@ -78,15 +78,15 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "delegate_task",
             "description": (
-                "Delega una tarea a un subagente en segundo plano para no hacer esperar al usuario. "
-                "Usalo para investigaciones largas, recopilación de información, descargas o tareas múltiples. "
-                "Devuelve el ID numérico asignado (ej: 1, 2) para que puedas informar al usuario."
+                "Delega una tarea a un subagente en segundo plano para no hacer esperar al usuario ni bloquear la voz. "
+                "ÚSALO OBLIGATORIAMENTE para: buscar/filtrar archivos, mover o copiar archivos, limpiar carpetas, investigaciones web amplias, descargas o tareas de múltiples pasos. "
+                "Devuelve el ID numérico asignado (ej: 1, 2) para que puedas informar de inmediato al usuario."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "description": {"type": "string", "description": "Descripción clara de la tarea que debe realizar el subagente."},
-                    "task_type": {"type": "string", "enum": ["investigacion", "sistema", "general"], "default": "general"},
+                    "description": {"type": "string", "description": "Descripción clara y detallada de la tarea que debe realizar el subagente."},
+                    "task_type": {"type": "string", "enum": ["investigacion", "sistema", "archivos", "general"], "default": "general"},
                 },
                 "required": ["description"],
             },
@@ -201,6 +201,71 @@ TOOL_SCHEMAS = [
                         "type": "string",
                         "description": "Directorio de trabajo del proyecto (opcional, por defecto el directorio actual).",
                     },
+                },
+                "required": ["agent", "prompt"],
+            },
+        },
+    },
+]
+
+# Herramientas operativas autónomas para subagentes en segundo plano (sin delegación recursiva)
+SUBAGENT_TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": (
+                "Ejecuta un comando de PowerShell en la PC Windows del usuario y devuelve stdout/stderr. "
+                "Usalo para buscar archivos (Get-ChildItem), filtrarlos, moverlos (Move-Item), copiarlos, crear carpetas (New-Item), o ejecutar scripts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Comando PowerShell a ejecutar"},
+                    "reason": {"type": "string", "description": "Por qué lo vas a ejecutar"},
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Busca en internet (DuckDuckGo). Usala para recopilar información, documentación o datos.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Texto a buscar"},
+                    "max_results": {"type": "integer", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_url",
+            "description": "Descarga una página web y devuelve su texto plano.",
+            "parameters": {
+                "type": "object",
+                "properties": {"url": {"type": "string"}},
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "invoke_coding_agent",
+            "description": "Invoca a un agente de código especializado (claude, codex, agy) para tareas complejas de desarrollo.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "agent": {"type": "string", "enum": ["claude", "codex", "agy"]},
+                    "prompt": {"type": "string", "description": "Instrucción para el agente de código"},
+                    "directory": {"type": "string", "description": "Directorio de trabajo"},
                 },
                 "required": ["agent", "prompt"],
             },

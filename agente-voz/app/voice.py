@@ -36,10 +36,10 @@ def load_whisper():
     return _whisper
 
 
-def listen_utterance(stop_event, on_level=lambda v: None, silence_s=1.5, max_s=45.0, min_speech_s=0.35):
+def listen_utterance(stop_event, on_level=lambda v: None, silence_s=1.5, max_s=45.0, min_speech_s=0.35, interrupt_event=None):
     """Escucha en continuo y devuelve el audio de UNA frase.
     silence_s=1.5s espera pausas naturales sin cortar prematuramente al usuario.
-    Devuelve None si se pidió detener.
+    Devuelve None si se pidió detener o si llegó una notificación antes de que el usuario hable.
     """
     sr = config.SAMPLE_RATE
     q: queue.Queue = queue.Queue()
@@ -53,6 +53,10 @@ def listen_utterance(stop_event, on_level=lambda v: None, silence_s=1.5, max_s=4
 
     with sd.InputStream(samplerate=sr, channels=1, dtype="float32", blocksize=int(sr * BLOCK_S), callback=callback):
         while not stop_event.is_set():
+            if interrupt_event is not None and interrupt_event.is_set() and not started:
+                on_level(0.0)
+                return None
+
             try:
                 chunk = q.get(timeout=0.2)
             except queue.Empty:

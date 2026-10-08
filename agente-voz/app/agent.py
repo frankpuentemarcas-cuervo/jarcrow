@@ -10,22 +10,36 @@ import memory
 import tools
 
 BASE_SYSTEM_PROMPT = f"""Sos Jarcrow, el asistente de voz y orquestador en español de Frank en Windows.
-- Respondé BREVE y conversacional: tus respuestas se leen en voz alta. Sin markdown, sin tablas, sin emojis.
-- METODOLOGÍA DE SUBDELEGACIÓN:
-  * Sos el cerebro central. Cuando Frank te pida tareas que lleven tiempo (investigaciones, búsquedas amplias, procesos en la máquina o tareas múltiples), NO te quedes bloqueado haciéndolas vos solo de principio a fin.
-  * Usá `delegate_task(description)` para encargar la tarea a un subagente en segundo plano.
-  * Informale de inmediato a Frank por voz: por ejemplo, "Asigné la tarea 1 a un subagente y te aviso al terminar" o "Estoy en eso con un subagente".
-  * Si Frank te pregunta cómo van las tareas, usá `list_tasks` para reportarle el avance de cada una.
-  * Si Frank te dice "para la tarea uno", "cancela la tarea dos" o similar, usá `cancel_task(task_id)` y confirmáselo.
-  * Si una tarea falló, usá `retry_task(task_id)` para reintentarla.
-- MEMORIA Y PREFERENCIAS:
-  * Tenés memoria permanente: si Frank te dice que recuerdes un dato clave, una preferencia o una ruta, usá `remember_fact(key, value)`.
-  * Si te pregunta qué recordás o sobre algún tema del pasado, usá `recall_facts(query)`.
+- Hablá con calidez, naturalidad y voseo rioplatense (ej: "dale", "de una", "te aviso al toque", "¿en qué más te ayudo?").
+- Tus respuestas se leen en voz alta por TTS: respondé BREVE, conversacional, sin markdown, sin tablas y sin emojis.
+
+- ORQUESTADOR Y DELEGACIÓN INMEDIATA (REGLA MANDATORIA):
+  * Tu rol principal es la conversación por voz en tiempo real. NUNCA te quedes bloqueado ejecutando procesos largos o tareas operativas en la conversación principal.
+  * TAREAS A DELEGAR OBLIGATORIAMENTE con `delegate_task(description)`:
+    - Manipular o escanear archivos (revisar carpetas, buscar/filtrar archivos, mover, copiar, borrar, organizar).
+    - Descargas, procesamiento por lotes o scripts del sistema.
+    - Investigaciones web profundas o de múltiples pasos.
+    - Tareas de programación o desarrollo de software.
+    Para cualquiera de estas solicitudes, DEBÉS llamar a `delegate_task(description)` en tu primer turno.
+  * Al delegar con `delegate_task`:
+    - Confirmale de inmediato a Frank por voz qué entendiste de lo que pidió.
+    - Explicale que ya pusiste a un subagente en segundo plano a resolverlo.
+    - Asegurale que le vas a avisar apenas termine.
+    - Dejale el micrófono libre preguntándole en qué más lo podés ayudar mientras tanto.
+  * `run_command` es EXCLUSIVAMENTE para comandos instantáneos de 1 segundo (abrir un programa con Start-Process, ver batería, etc.). PROHIBIDO usarlo para buscar archivos o tareas de múltiples pasos.
+
+- CONTROL DE SUBAGENTES:
+  * Si Frank pregunta cómo van las tareas o qué estás haciendo, usá `list_tasks` para reportar el avance.
+  * Si te dice "para la tarea 1", "cancela la tarea 2", usá `cancel_task(task_id)`.
+  * Si una tarea falló, usá `retry_task(task_id)`.
+
+- MEMORIA PERMANENTE:
+  * Guardá preferencias o datos clave con `remember_fact(key, value)`.
+  * Consultá recuerdos pasados con `recall_facts(query)`.
+
 - AGENTES DE CÓDIGO (Claude Code, Codex, Antigravity):
-  * Si Frank te pide programar, refactorizar, auditar código o tareas pesadas de desarrollo, usá `invoke_coding_agent(agent, prompt, directory)`.
-  * Opciones: 'claude' (Claude Code), 'codex' (Codex CLI) o 'agy' (Antigravity CLI).
-- Tenés acceso libre a internet: para consultas simples e inmediatas usá `web_search` / `fetch_url`. Para investigaciones largas o pesadas, delegá en un subagente.
-- Para acciones locales en la PC usá `run_command` (PowerShell).
+  * Para tareas de desarrollo podés delegar a un subagente o usar `invoke_coding_agent(agent, prompt, directory)`.
+
 - Sistema: {platform.platform()}."""
 
 
@@ -65,7 +79,7 @@ class Agent:
                 return self.client.chat.completions.create(**kwargs)
             raise
 
-    def ask(self, user_text: str, max_steps: int = 6, stop_event=None) -> str:
+    def ask(self, user_text: str, max_steps: int = 3, stop_event=None) -> str:
         now = datetime.now().strftime("%Y-%m-%d %H:%M")
         formatted_user = f"[{now}] {user_text}"
         
@@ -94,6 +108,9 @@ class Agent:
                 final_response = msg.content or ""
                 break
 
+            delegated = False
+            delegation_info = None
+
             for call in calls:
                 if stop_event is not None and stop_event.is_set():
                     final_response = "Ejecución detenida."
@@ -105,6 +122,46 @@ class Agent:
                 print(f"  -> {call.function.name}({args})")
                 result = tools.dispatch(call.function.name, args, confirm=self.confirm_command)
                 self.messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+
+                if call.function.name == "delegate_task":
+                    delegated = True
+                    delegation_info = (args, result)
+
+            if delegated:
+                # La tarea ya está corriendo en segundo plano en un subagente.
+                # Respondemos de inmediato a Frank por voz confirmando qué se entendió y delegó,
+                # para que sepa que está en marcha y pueda seguir conversando sin esperas.
+                try:
+                    task_desc = delegation_info[0].get("description", user_text)
+                    t_id_hint = ""
+                    try:
+                        res_obj = json.loads(delegation_info[1])
+                        t_id_hint = f" (Tarea {res_obj.get('tarea_id', '')})"
+                    except Exception:
+                        pass
+
+                    self.messages.append({
+                        "role": "system",
+                        "content": (
+                            "INSTRUCCIÓN DE VOZ INMEDIATA: Respondé en UNA sola oración hablada en español rioplatense (voseo): "
+                            f"confirmá qué entendiste del pedido '{task_desc}', que ya se lo encargaste a un subagente en segundo plano{t_id_hint}, "
+                            "que le avisarás apenas termine, y preguntale en qué más lo podés ayudar mientras tanto."
+                        )
+                    })
+                    res_msg = self.client.chat.completions.create(
+                        model=config.MODEL,
+                        messages=self.messages,
+                    ).choices[0].message
+                    final_response = res_msg.content or ""
+                except Exception as exc:
+                    print(f"Error generando confirmación de delegación: {exc}")
+                    final_response = ""
+
+                if not final_response:
+                    task_desc = delegation_info[0].get("description", "la tarea")
+                    final_response = f"¡Entendido, Frank! Ya puse a un subagente en segundo plano a trabajar en {task_desc}. Te aviso apenas termine; mientras tanto, ¿en qué más te puedo ayudar?"
+
+                break
 
         if not final_response:
             # Si el modelo ejecutó herramientas pero no emitió texto final, pedirle síntesis explícita

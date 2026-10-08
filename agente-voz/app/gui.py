@@ -267,14 +267,13 @@ class JarcrowApp(ctk.CTk):
             if self.agent is None:
                 self.agent = Agent(self.confirm_command)
 
+            pending_notifications = queue.Queue()
+            notify_event = threading.Event()
+
             def on_subtask_notify(msg: str):
                 self.post("log", "⚙️ Subagente", msg)
-                # Avisar por voz brevemente si el agente no está ocupado hablando
-                if self.agent_state == "listening" and not self.stop_event.is_set():
-                    try:
-                        voice.speak(msg, stop_event=[self.stop_event, self.execution_stop_event], enable_barge_in=False)
-                    except Exception:
-                        pass
+                pending_notifications.put(msg)
+                notify_event.set()
 
             import subagents
 
@@ -286,10 +285,25 @@ class JarcrowApp(ctk.CTk):
             accumulated_text = []
 
             while not self.stop_event.is_set():
+                # Despachar notificaciones pendientes de subagentes por voz con el micrófono en pausa
+                while not pending_notifications.empty() and not self.stop_event.is_set():
+                    notify_event.clear()
+                    try:
+                        notif_msg = pending_notifications.get_nowait()
+                    except queue.Empty:
+                        break
+                    self.post("state", "speaking")
+                    try:
+                        voice.speak(notif_msg, stop_event=[self.stop_event, self.execution_stop_event], enable_barge_in=True)
+                    except Exception:
+                        pass
+                    if self.stop_event.is_set():
+                        break
+
                 self.post("state", "listening", "Te escucho..." if not accumulated_text else "Tomando nota (decí 'Procede')...")
-                audio = voice.listen_utterance(self.stop_event, self._set_level)
+                audio = voice.listen_utterance(self.stop_event, self._set_level, interrupt_event=notify_event)
                 if audio is None:
-                    break
+                    continue
                 raw_text = voice.transcribe(audio)
                 if not raw_text:
                     continue

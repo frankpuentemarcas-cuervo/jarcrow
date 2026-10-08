@@ -23,10 +23,13 @@ _tasks = {}
 _task_counter = 0
 _global_notify = None
 
-SUBAGENT_SYSTEM_PROMPT = """Sos un subagente especializado de Jarcrow.
-Tu rol es resolver de manera autónoma, rápida y exhaustiva la tarea asignada.
-- Tenés acceso a herramientas web_search, fetch_url y run_command (PowerShell).
-- Sé concreto y devolvé un informe claro y directo con los resultados obtenidos.
+SUBAGENT_SYSTEM_PROMPT = """Sos un subagente autónomo de Jarcrow ejecutando una tarea en segundo plano para Frank en Windows.
+Tu misión es resolver la tarea asignada de principio a fin de manera eficiente, segura y confiable.
+- Tenés acceso a herramientas: run_command (PowerShell), web_search, fetch_url e invoke_coding_agent.
+- Si la tarea implica manipular o mover archivos:
+  * Buscá, filtrá y procesá los archivos usando PowerShell (Get-ChildItem, Move-Item, Copy-Item, etc.).
+  * Si la carpeta de destino no existe, creala primero con 'New-Item -ItemType Directory -Force -Path ...'.
+- Cuando termines, devolvé un informe CONCISO y CLARO indicando exactamente qué hiciste y cuál fue el resultado (ejemplo: "Se revisó la carpeta X y se movieron 20 archivos a Y.").
 - Si encontrás un error, intentá resolverlo de forma alternativa antes de reportar falla."""
 
 
@@ -81,8 +84,8 @@ def _run_subagent(task: SubTask, on_notify=None):
 
         try:
             task.progress_msg = f"Procesando (intento {attempt + 1})..."
-            # Loop de resolución del subagente (hasta 5 pasos)
-            for _ in range(5):
+            # Loop de resolución del subagente (hasta 6 pasos de herramientas)
+            for _ in range(6):
                 if task.stop_event.is_set():
                     task.status = "cancelada"
                     return
@@ -90,7 +93,7 @@ def _run_subagent(task: SubTask, on_notify=None):
                 res = client.chat.completions.create(
                     model=config.MODEL,
                     messages=messages,
-                    tools=tools.TOOL_SCHEMAS,
+                    tools=getattr(tools, "SUBAGENT_TOOL_SCHEMAS", tools.TOOL_SCHEMAS),
                     timeout=60,
                 )
                 msg = res.choices[0].message
@@ -105,12 +108,7 @@ def _run_subagent(task: SubTask, on_notify=None):
 
                 if not calls:
                     task.result = msg.content or "Completada sin texto de salida."
-                    task.status = "completada"
-                    task.progress_msg = "Completada con éxito."
-                    task.finished_at = datetime.now()
-                    if on_notify:
-                        on_notify(f"La tarea {task.task_id} ('{task.description[:40]}...') fue completada con éxito.")
-                    return
+                    break
 
                 for call in calls:
                     if task.stop_event.is_set():
@@ -125,6 +123,43 @@ def _run_subagent(task: SubTask, on_notify=None):
                     out = tools.dispatch(call.function.name, args, confirm=None)
                     messages.append({"role": "tool", "tool_call_id": call.id, "content": out})
 
+            if not task.result and not task.stop_event.is_set():
+                try:
+                    messages.append({
+                        "role": "user",
+                        "content": "Con base en las herramientas ejecutadas, redactá un resumen claro y directo de lo realizado en una oración."
+                    })
+                    res_final = client.chat.completions.create(
+                        model=config.MODEL,
+                        messages=messages,
+                        timeout=30,
+                    )
+                    task.result = res_final.choices[0].message.content or "Completada con éxito."
+                except Exception:
+                    task.result = "Completada con éxito."
+
+            if not task.stop_event.is_set():
+                task.status = "completada"
+                task.progress_msg = "Completada con éxito."
+                task.finished_at = datetime.now()
+
+                # Guardar resultado en el historial de turnos para que el agente recuerde el resultado
+                try:
+                    import memory
+                    memory.add_turn("system", f"[Subagente Tarea {task.task_id} finalizada]: {task.result}")
+                except Exception:
+                    pass
+
+                if on_notify:
+                    import re
+                    summary = task.result.strip()
+                    summary_clean = re.sub(r"[*_#`>|]", "", summary).split("\n")[0].strip()
+                    if len(summary_clean) > 130:
+                        summary_clean = summary_clean[:127] + "..."
+                    notify_msg = f"Frank, terminé la tarea {task.task_id}: {summary_clean}"
+                    on_notify(notify_msg)
+                return
+
         except Exception as exc:
             task.error = str(exc)
             task.retry_count = attempt + 1
@@ -136,8 +171,14 @@ def _run_subagent(task: SubTask, on_notify=None):
                 task.status = "fallida"
                 task.progress_msg = f"Falló tras reintentos: {exc}"
                 task.finished_at = datetime.now()
+                try:
+                    import memory
+                    memory.add_turn("system", f"[Subagente Tarea {task.task_id} falló]: {exc}")
+                except Exception:
+                    pass
                 if on_notify:
-                    on_notify(f"La tarea {task.task_id} ('{task.description[:40]}...') falló: {exc}")
+                    err_clean = str(exc).split("\n")[0][:100]
+                    on_notify(f"Frank, la tarea {task.task_id} no pudo completarse: {err_clean}")
                 return
 
 
